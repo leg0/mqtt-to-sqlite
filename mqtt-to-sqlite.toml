@@ -1,0 +1,20 @@
+protocol = "ssl"
+host = "mosquitto.lan"
+port = 8883
+uri = "ssl://mosquitto.lan:8883"
+
+ca_cert =  "/home/lego/.step/certs/root_ca.crt"
+client_cert = "/home/lego/mqtt-to-sqlite/client.crt"
+client_key = "/home/lego/mqtt-to-sqlite/client.key"
+
+db = "m2s.db"
+
+[metrics.metric_name]
+mqtt_topic = "a/c/b"
+json_path = ".q.w.e"
+unit = "C"
+
+[metrics.another_metric]
+mqtt_topic = "c/d/e"
+json_path = ".z.x.c"
+unit = "m"
