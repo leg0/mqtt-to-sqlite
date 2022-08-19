@@ -1,74 +1,53 @@
 use futures::{executor::block_on, stream::StreamExt};
-use mqtt::SslOptionsBuilder;
-use serde_derive::{Serialize,Deserialize};
-use std::{fs, error::Error, collections::BTreeMap};
-use paho_mqtt as mqtt;
-use serde_json as json;
-use std::{process, time::Duration};
-use std::option::Option;
-use rusqlite::{Connection, Result};
+use paho_mqtt::{QOS_2, Message};
+use serde_json::Value;
+use std::{error::Error, collections::BTreeMap};
 
-#[derive(Deserialize, Serialize)]
-struct Topic
-{
-    mqtt_topic: String,
-    json_path: String,
-    unit: Option<String>
-}
+use jq_rs as jq;
+use std::time::Duration;
+use rusqlite::{Connection, Result, params};
 
-#[derive(Deserialize, Serialize)]
-struct Config
-{
-    uri: String, // ws, tcp, ssl
-
-    ca_cert: Option<String>,
-    client_key: Option<String>,
-    client_cert: Option<String>,
-
-    db: String,
-
-    metrics: BTreeMap<String,Topic>
-}
+mod config;
+mod db;
+mod mqtt;
+mod error;
+use crate::{config::{Config}, error::M2SError};
 
 const CONFIG_FILE_PATH: &str = "mqtt-to-sqlite.toml";
 
-fn connect_mqtt(config: &Config) -> mqtt::AsyncClient {
-    if let Some(ref ca_cert) = config.ca_cert { println!("CA cert: {}", ca_cert); }
-    if let Some(ref client_cert) = config.client_cert { println!("client cert: {}", client_cert); }
-    if let Some(ref client_key) = config.client_key { println!("client cert: {}", client_key); }
-
-     let create_opts = mqtt::CreateOptionsBuilder::new()
-         .server_uri(&config.uri)
-         .client_id("mqtt-to-sqlite")
-         .finalize();
-
-    mqtt::AsyncClient::new(create_opts).unwrap_or_else(|e| {
-        println!("Error creating the client: {:?}", e);
-        process::exit(1);
-    })
-}
-
-fn initialize_database(conn: &Connection, config: &Config) -> Result<(), Box<dyn std::error::Error>>
+fn handle_message(msg: &Message, mq_to_jq_and_metric: &BTreeMap<String, (String,String)>, conn: &Connection) -> Result<(), M2SError>
 {
-    conn.execute("create table if not exists metadata(metric primary key, unit, description)", [])?;
+    let timestamp = chrono::Utc::now().timestamp_millis();
+    println!("{}", msg);
+    let topic = msg.topic();
+    let payload = msg.payload_str().to_string();
 
-    for (ref metric, ref x) in &config.metrics {    
-        println!("=== {}", metric);
-        let m = conn.changes() as usize;
-        let sql = format!("create table if not exists {name} (t integer primary key asc, value)", name = metric);
-        let n = conn.execute(&sql, [])?;
-        println!("{} -> n={}", sql, n);
-        let unit = if let Some(ref unit) = x.unit { unit } else { "" };
-        let desc = format!("{}, {}", x.mqtt_topic, x.json_path);
-        if n > m {
-            println!("Table {} created, adding metadata", metric);
-            conn.execute("insert into metadata(metric, unit, description) values(?, ?, ?)", 
-                &[metric, unit, &desc ])?;
+    if !mq_to_jq_and_metric.contains_key(topic) {
+        println!("Config contains wildcard. Not supported yet");
+    }
+    else if let Some((ref query, ref metric)) = mq_to_jq_and_metric.get(topic) {
+        println!("metric={}", metric);
+        let query2 = format!("({})?", query);
+        println!("query='{}'", query);
+        // TODO: optimize: pre-compile the jq query, and re-use
+        let result = jq::run(&query2, &payload)?;
+        let sqlvalue = match serde_json::from_str::<Value>(&result)? {
+            Value::Bool(_)   => true,
+            Value::Number(_) => true,
+            Value::String(_) => true,
+            Value::Null =>
+            {
+                println!("Query '{}' failed to find anything from payload '{}'", query2, payload);
+                false
+            },
+            val => { println!("Unsupported value: {val}"); false },
+        };
+        if sqlvalue {
+            let sql = format!("insert into {} (t, value) values(?,?)", metric);
+            conn.execute(&sql, params![timestamp, result.to_string()])?;
         }
         else {
-            println!("Table {} already exists", metric);
-            conn.execute("update metadata set unit=?, description=? where metric=?", 
-                &[unit, &desc, metric])?;
+            println!("Query '{}' failed to find anything from payload '{}'", query2, payload);
         }
     }
     Ok(())
@@ -77,46 +56,34 @@ fn initialize_database(conn: &Connection, config: &Config) -> Result<(), Box<dyn
 fn main() -> Result<(), Box<dyn Error>>
 {
     // Configure
-    let toml_str = fs::read_to_string(CONFIG_FILE_PATH)?;
-    let config: Config = toml::from_str(&toml_str)?;
+    let config = Config::load(CONFIG_FILE_PATH)?;
+
+    // Make map from topic -> (jq query, metric)
+    let metrics = &config.metrics;
+    let mut mq_to_metric_and_jq = BTreeMap::new();
+    for (k,v) in &*metrics {
+        let v2 = (v.json_path.clone(), k.clone());
+        mq_to_metric_and_jq.insert(v.mqtt_topic.clone(), v2);
+    }
 
     // Database
     let conn = Connection::open(&config.db)?;
-    initialize_database(&conn, &config)?;
+    db::initialize_database(&conn, &config)?;
 
     // MQTT
-    let mut mqtt_client = connect_mqtt(&config);
+    let mut mqtt_client = mqtt::make_client(&config);
 
-     if let Err(err) = block_on(async {
-         // Get message stream before connecting.
-         let mut strm = mqtt_client.get_stream(25);
+    if let Err(err) = block_on(async {
+        // Get message stream before connecting.
+        let mut strm = mqtt_client.get_stream(25);
  
-         // Define the set of options for the connection
-         let lwt = mqtt::Message::new("test", "Async subscriber lost connection", mqtt::QOS_1);
+        // Define the set of options for the connection
+
+        let conn_opts = mqtt::connection_options(&config)?;
+        mqtt_client.connect(conn_opts).await?;
  
-         let ssl_opts = SslOptionsBuilder::new()
-            .trust_store("/home/lego/.step/certs/root_ca.crt")?
-            .key_store("/home/lego/mqtt-to-sqlite/client.crt")?
-            .private_key("/home/lego/mqtt-to-sqlite/client.key")?
-            .finalize();
-         let conn_opts = mqtt::ConnectOptionsBuilder::new()
-             .keep_alive_interval(Duration::from_secs(30))
-             .mqtt_version(mqtt::MQTT_VERSION_3_1_1)
-             .clean_session(false)
-             .will_message(lwt)
-             .ssl_options(ssl_opts)
-             .finalize();
- 
-         // Make the connection to the broker
-         println!("Connecting to the MQTT server...");
-         mqtt_client.connect(conn_opts).await?;
- 
-        let topics: Vec<&str> = config.metrics
-            .values()
-            .into_iter()
-            .map(| kv:&Topic| { kv.mqtt_topic.as_str() })
-            .collect();
-        let qos = vec![1; topics.len()];
+        let topics =  config.get_mqtt_topics();
+        let qos = vec![QOS_2; topics.len()]; //TODO: make configurable
         println!("Subscribing to topics: {:?}", topics);
         mqtt_client.subscribe_many(&topics[..], &qos[..]).await?;
  
@@ -128,29 +95,25 @@ fn main() -> Result<(), Box<dyn Error>>
          // whatever) the server will get an unexpected drop and then
          // should emit the LWT message.
  
-         while let Some(msg_opt) = strm.next().await {
-             if let Some(ref msg) = msg_opt {
-                 println!("{}", msg);
-                 let payload = msg.payload_str().to_string();
-                 if  let Ok(v) = serde_json::from_str::<json::Value>(&payload) {
-                    // TODO use jq to query the value from msg
-                 }
+        while let Some(msg_opt) = strm.next().await {
+            if let Some(ref msg) = msg_opt {
+                handle_message(&msg, &mq_to_metric_and_jq, &conn)?;
             }
-             else {
-                 // A "None" means we were disconnected. Try to reconnect...
-                 println!("Lost connection. Attempting reconnect.");
-                 while let Err(err) = mqtt_client.reconnect().await {
-                     println!("Error reconnecting: {}", err);
-                     // For tokio use: tokio::time::delay_for()
-                     async_std::task::sleep(Duration::from_millis(1000)).await;
-                 }
-             }
-         }
- 
-         // Explicit return type for the async block
-         Ok::<(), mqtt::Error>(())
-     }) {
-         eprintln!("{}", err);
-     }    
+            else {
+                // A "None" means we were disconnected. Try to reconnect...
+                println!("Lost connection. Attempting reconnect.");
+                while let Err(err) = mqtt_client.reconnect().await {
+                    println!("Error reconnecting: {}", err);
+                    // For tokio use: tokio::time::delay_for()
+                    async_std::task::sleep(Duration::from_millis(1000)).await;
+                }
+            }
+        }
+
+        // Explicit return type for the async block
+        Ok::<(), M2SError>(())
+    }) {
+        eprintln!("{:?}", err);
+    }    
     Ok(())
 }
