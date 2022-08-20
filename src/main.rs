@@ -13,22 +13,23 @@ mod mqtt;
 mod error;
 use crate::{config::Config, error::M2SError};
 
-const CONFIG_FILE_PATH: &str = "mqtt-to-sqlite.toml";
+const DEFAULT_CONFIG_FILE_PATH: &str = "mqtt-to-sqlite.toml";
 
-fn handle_message(msg: &Message, mq_to_jq_and_metric: &BTreeMap<String, (String,String)>, conn: &Connection) -> Result<(), M2SError>
+fn handle_message(
+    msg: &Message,
+    mq_to_jq_and_metric: &BTreeMap<&str, (&str,&str)>,
+    conn: &Connection) -> Result<(), M2SError>
 {
     let timestamp = chrono::Utc::now().timestamp_millis();
-    println!("{}", msg);
+    println!("{msg}");
     let topic = msg.topic();
-    let payload = msg.payload_str().to_string();
+    let payload = msg.payload_str();
 
     if !mq_to_jq_and_metric.contains_key(topic) {
         println!("Config contains wildcard. Not supported yet");
     }
-    else if let Some((ref query, ref metric)) = mq_to_jq_and_metric.get(topic) {
-        println!("metric={}", metric);
+    else if let Some((ref query, ref metric_name)) = mq_to_jq_and_metric.get(topic) {
         let query2 = format!("({})?", query);
-        println!("query='{}'", query);
         // TODO: optimize: pre-compile the jq query, and re-use
         let result = jq::run(&query2, &payload)?;
         let sqlvalue = match serde_json::from_str::<Value>(&result)? {
@@ -37,17 +38,17 @@ fn handle_message(msg: &Message, mq_to_jq_and_metric: &BTreeMap<String, (String,
             Value::String(_) => true,
             Value::Null =>
             {
-                println!("Query '{}' failed to find anything from payload '{}'", query2, payload);
+                println!("Query '{query2}' failed to find anything from payload '{payload}'");
                 false
             },
-            val => { println!("Unsupported value: {val}"); false },
+            val => {
+                println!("Unsupported value: {val}");
+                false
+            },
         };
         if sqlvalue {
-            let sql = format!("insert into {} (t, value) values(?,?)", metric);
+            let sql = format!("insert into {metric_name} (t, value) values(?,?)");
             conn.execute(&sql, params![timestamp, result.to_string()])?;
-        }
-        else {
-            println!("Query '{}' failed to find anything from payload '{}'", query2, payload);
         }
     }
     Ok(())
@@ -56,14 +57,14 @@ fn handle_message(msg: &Message, mq_to_jq_and_metric: &BTreeMap<String, (String,
 fn main() -> Result<(), M2SError>
 {
     // Configure
-    let config = Config::load(CONFIG_FILE_PATH)?;
+    let config = Config::load(DEFAULT_CONFIG_FILE_PATH)?;
 
-    // Make map from topic -> (jq query, metric)
+    // Make map from topic -> (jq query, metric name)
     let metrics = &config.metrics;
     let mut mq_to_metric_and_jq = BTreeMap::new();
     for (k,v) in &*metrics {
-        let v2 = (v.json_path.clone(), k.clone());
-        mq_to_metric_and_jq.insert(v.mqtt_topic.clone(), v2);
+        let v2 = (v.json_path.as_str(), k.as_str());
+        mq_to_metric_and_jq.insert(v.mqtt_topic.as_str(), v2);
     }
 
     // Database
@@ -82,7 +83,7 @@ fn main() -> Result<(), M2SError>
         let conn_opts = mqtt::connection_options(&config)?;
         mqtt_client.connect(conn_opts).await?;
  
-        let topics =  config.get_mqtt_topics();
+        let topics = config.get_mqtt_topics();
         let qos = vec![QOS_2; topics.len()]; //TODO: make configurable
         println!("Subscribing to topics: {:?}", topics);
         mqtt_client.subscribe_many(&topics[..], &qos[..]).await?;
