@@ -1,7 +1,7 @@
 use futures::{executor::block_on, stream::StreamExt};
 use paho_mqtt::{QOS_2, Message};
 use serde_json::Value;
-use std::{error::Error, collections::BTreeMap};
+use std::collections::BTreeMap;
 
 use jq_rs as jq;
 use std::time::Duration;
@@ -11,7 +11,7 @@ mod config;
 mod db;
 mod mqtt;
 mod error;
-use crate::{config::{Config}, error::M2SError};
+use crate::{config::Config, error::M2SError};
 
 const CONFIG_FILE_PATH: &str = "mqtt-to-sqlite.toml";
 
@@ -53,7 +53,7 @@ fn handle_message(msg: &Message, mq_to_jq_and_metric: &BTreeMap<String, (String,
     Ok(())
 }
 
-fn main() -> Result<(), Box<dyn Error>>
+fn main() -> Result<(), M2SError>
 {
     // Configure
     let config = Config::load(CONFIG_FILE_PATH)?;

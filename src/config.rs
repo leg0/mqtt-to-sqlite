@@ -1,6 +1,8 @@
 use std::{collections::BTreeMap, fs};
 use serde_derive::{Serialize,Deserialize};
 
+use crate::error::M2SError;
+
 #[derive(Deserialize, Serialize)]
 pub struct Topic
 {
@@ -24,7 +26,7 @@ pub struct Config
 }
 
 impl Config {
-    pub(crate) fn load(file: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    pub(crate) fn load(file: &str) -> Result<Self, M2SError> {
         let toml_str = fs::read_to_string(file)?;
         Ok(toml::from_str(&toml_str)?)
     }

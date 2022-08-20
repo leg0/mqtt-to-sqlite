@@ -1,7 +1,7 @@
 use rusqlite::Connection;
-use crate::config::Config;
+use crate::{config::Config, error::M2SError};
 
-pub fn initialize_database(conn: &Connection, config: &Config) -> Result<(), Box<dyn std::error::Error>>
+pub fn initialize_database(conn: &Connection, config: &Config) -> Result<(), M2SError>
 {
     conn.execute("create table if not exists metadata(metric primary key, unit, description)", [])?;
 
