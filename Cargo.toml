@@ -5,22 +5,26 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[profile.release]
+strip = true
+lto = true
+panic = "abort"
+
 [dependencies]
-paho-mqtt = "0.11.1"
+paho-mqtt = { version = "0.11.1", features = ["vendored-ssl"] }
 futures = "0.3.23"
-async-channel = "1.6"
-crossbeam-channel = "0.5"
-log = "0.4"
-thiserror = "1.0"
-env_logger = "0.9.0"
+#async-channel = "1.6"
+#crossbeam-channel = "0.5"
+#log = "0.4"
+#thiserror = "1.0"
+#env_logger = "0.9.0"
 async-std = "1.12.0"
 chrono = "0.4.22"
 
 toml = "0.5.9"
 serde_derive = "1.0.143"
 serde = "1.0.143"
-
 serde_json = "1.0.83"
 jq-rs = { version = "0.4.1", features = ["bundled"] }
 
-rusqlite = "0.28.0"
+rusqlite = { version = "0.28.0", features = ["bundled"] }
