@@ -8,7 +8,8 @@ pub struct Topic
 {
     pub mqtt_topic: String,
     pub json_path: String,
-    pub unit: Option<String>
+    pub unit: Option<String>,
+    pub description: Option<String>,
 }
 
 #[derive(Deserialize, Serialize)]

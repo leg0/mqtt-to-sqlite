@@ -10,11 +10,13 @@ client_key = "/home/lego/mqtt-to-sqlite/client.key"
 db = "m2s.db"
 
 [metrics.metric_name]
+description = "Temperature in garage"
 mqtt_topic = "a/c/b"
 json_path = ".q.w.e"
 unit = "C"
 
 [metrics.another_metric]
+description = "Distance between doodads"
 mqtt_topic = "c/d/e"
 json_path = ".z.x.c"
 unit = "m"
