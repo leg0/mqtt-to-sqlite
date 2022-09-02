@@ -33,3 +33,10 @@ mqtt_topic = "c/d/e"
 json_path = ".z.x.c"
 unit = "m"
 ```
+
+## Create .deb package
+
+```
+cargo deb --target armv7-unknown-linux-gnueabihf
+cargo deb
+```

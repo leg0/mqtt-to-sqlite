@@ -2,6 +2,7 @@ use futures::{executor::block_on, stream::StreamExt};
 use paho_mqtt::{QOS_2, Message};
 use serde_json::Value;
 use std::collections::BTreeMap;
+use std::env;
 
 use jq_rs as jq;
 use std::time::Duration;
@@ -56,6 +57,14 @@ fn handle_message(
 
 fn main() -> Result<(), M2SError>
 {
+    match env::args().next().as_ref().map(|s| &s[..]) {
+        Some("--version") => {
+            println!("0.1.1");
+            return Ok(());
+        }
+        _ => {}
+    }
+
     // Configure
     let config = Config::load(DEFAULT_CONFIG_FILE_PATH)?;
 

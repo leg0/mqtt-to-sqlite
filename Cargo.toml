@@ -1,9 +1,16 @@
 [package]
 name = "mqtt-to-sqlite"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
+readme = "README.md"
+description = "Subscribes to MQTT topics and stores the data in time-series database."
+license = "GPLv2"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[package.metadata.deb]
+maintainer = "Ahti Legonkov"
+copyright = "Ahti Legonkov"
 
 [profile.release]
 strip = true
