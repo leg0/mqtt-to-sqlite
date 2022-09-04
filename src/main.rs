@@ -72,8 +72,7 @@ fn main() -> Result<(), M2SError>
                     config_file_name = cfg_path.to_owned();
                 }
                 _ => {
-                    eprintln!("Expected file path");
-                    return Err(M2SError::BadCommandLine("expected config file path"));
+                    panic!("Expected file path");
                 }
             }
         }
