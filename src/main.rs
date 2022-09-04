@@ -14,7 +14,8 @@ mod mqtt;
 mod error;
 use crate::{config::Config, error::M2SError};
 
-const DEFAULT_CONFIG_FILE_PATH: &str = "mqtt-to-sqlite.toml";
+const DEFAULT_CONFIG_FILE_PATH: &str = "/etc/mqtt-to-sqlite/mqtt-to-sqlite.toml";
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn handle_message(
     msg: &Message,
@@ -57,16 +58,31 @@ fn handle_message(
 
 fn main() -> Result<(), M2SError>
 {
-    match env::args().next().as_ref().map(|s| &s[..]) {
+    let mut config_file_name = DEFAULT_CONFIG_FILE_PATH.to_owned();
+    let args = &mut env::args();
+    args.next(); // drop the first arg, as that's the executable.
+    match args.next().as_ref().map(|s| &s[..]) {
         Some("--version") => {
-            println!("0.1.1");
+            println!("mqtt-to-sqlite {VERSION}");
             return Ok(());
+        }
+        Some("--config") => {
+            match args.next() {
+                Some(cfg_path) => {
+                    config_file_name = cfg_path.to_owned();
+                }
+                _ => {
+                    eprintln!("Expected file path");
+                    return Err(M2SError::BadCommandLine("expected config file path"));
+                }
+            }
         }
         _ => {}
     }
 
     // Configure
-    let config = Config::load(DEFAULT_CONFIG_FILE_PATH)?;
+    let config = Config::load(&config_file_name)
+        .expect(&format!("Failed to load config from file {config_file_name}"));
 
     // Make map from topic -> (jq query, metric name)
     let metrics = &config.metrics;
