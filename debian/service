@@ -1,0 +1,13 @@
+[Unit]
+Description=MQTT to Sqlite3
+Wants=
+After=
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/mqtt-to-sqlite
+RestartSec=5
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

@@ -1,6 +1,6 @@
 [package]
 name = "mqtt-to-sqlite"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 readme = "README.md"
 description = "Subscribes to MQTT topics and stores the data in time-series database."
@@ -11,6 +11,10 @@ license = "GPLv2"
 [package.metadata.deb]
 maintainer = "Ahti Legonkov"
 copyright = "Ahti Legonkov"
+maintainer-scripts = "debian/"
+
+[package.metadata.deb.systemd-units]
+enable = false
 
 [profile.release]
 strip = true
