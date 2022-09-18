@@ -5,24 +5,24 @@ pub fn initialize_database(conn: &Connection, config: &Config) -> Result<(), M2S
 {
     conn.execute("create table if not exists metadata(metric primary key, unit, description)", [])?;
 
-    for (ref metric, ref x) in &config.metrics {    
-        println!("=== {}", metric);
-        let m = conn.changes() as usize;
-        let sql = format!("create table if not exists {name} (t integer primary key asc, value)", name = metric);
-        let n = conn.execute(&sql, [])?;
-        println!("{} -> n={}", sql, n);
-        let unit = if let Some(ref unit) = x.unit { unit } else { "" };
-        let desc = format!("{}, {}", x.mqtt_topic, x.json_path);
-        if n > m {
-            println!("Table {} created, adding metadata", metric);
-            conn.execute("insert into metadata(metric, unit, description) values(?, ?, ?)", 
-                &[metric, unit, &desc ])?;
-        }
-        else {
-            println!("Table {} already exists", metric);
-            conn.execute("update metadata set unit=?, description=? where metric=?", 
-                &[unit, &desc, metric])?;
-        }
-    }
+    // for (metric_name, metric) in &config.metrics {    
+    //     println!("=== {}", metric_name);
+    //     let m = conn.changes() as usize;
+    //     let sql = format!("create table if not exists {metric_name} (t integer primary key asc, value)");
+    //     let n = conn.execute(&sql, [])?;
+    //     println!("{} -> n={}", sql, n);
+    //     let unit = if let Some(ref unit) = metric.unit { unit } else { "" };
+    //     let desc = if let Some(ref desc) = metric.description { desc} else { "" };
+    //     if n > m {
+    //         println!("Table {:?} created, adding metadata", metric);
+    //         conn.execute("insert into metadata(metric, unit, description) values(?, ?, ?)", 
+    //             &[metric_name, unit, desc ])?;
+    //     }
+    //     else {
+    //         println!("Table {metric_name} already exists");
+    //         conn.execute("update metadata set unit=?, description=? where metric=?", 
+    //             &[unit, &desc, metric_name])?;
+    //     }
+    // }
     Ok(())
 }

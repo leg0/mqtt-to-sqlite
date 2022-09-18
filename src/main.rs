@@ -1,3 +1,4 @@
+use config::Metric;
 use futures::{executor::block_on, stream::StreamExt};
 use paho_mqtt::{QOS_2, Message};
 use serde_json::Value;
@@ -19,7 +20,7 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn handle_message(
     msg: &Message,
-    mq_to_jq_and_metric: &BTreeMap<&str, (&str,&str)>,
+    topic_to_metrics: &BTreeMap<&str, Vec<&Metric>>,
     conn: &Connection) -> Result<(), M2SError>
 {
     let timestamp = chrono::Utc::now().timestamp_millis();
@@ -27,30 +28,32 @@ fn handle_message(
     let topic = msg.topic();
     let payload = msg.payload_str();
 
-    if !mq_to_jq_and_metric.contains_key(topic) {
-        println!("Config contains wildcard. Not supported yet");
+    if !topic_to_metrics.contains_key(topic) {
+        println!("Warning: Config contains wildcard. Not supported yet");
     }
-    else if let Some((ref query, ref metric_name)) = mq_to_jq_and_metric.get(topic) {
-        let query2 = format!("({})?", query);
-        // TODO: optimize: pre-compile the jq query, and re-use
-        let result = jq::run(&query2, &payload)?;
-        let sqlvalue = match serde_json::from_str::<Value>(&result)? {
-            Value::Bool(_)   => true,
-            Value::Number(_) => true,
-            Value::String(_) => true,
-            Value::Null =>
-            {
-                println!("Query '{query2}' failed to find anything from payload '{payload}'");
-                false
-            },
-            val => {
-                println!("Unsupported value: {val}");
-                false
-            },
-        };
-        if sqlvalue {
-            let sql = format!("insert into {metric_name} (t, value) values(?,?)");
-            conn.execute(&sql, params![timestamp, result.to_string()])?;
+    else if let Some(metrics) = topic_to_metrics.get(topic) {
+        for &metric in metrics {
+            let program = format!("({})?", metric.json_path);
+            // TODO: optimize: pre-compile the jq query, and re-use
+            let result = jq::run(&program, &payload)?;
+            let sqlvalue = match serde_json::from_str::<Value>(&result)? {
+                Value::Bool(_)   => true,
+                Value::Number(_) => true,
+                Value::String(_) => true,
+                Value::Null =>
+                {
+                    println!("Query '{}' failed to find anything from payload '{payload}'", program);
+                    false
+                },
+                val => {
+                    println!("Unsupported value: {val}");
+                    false
+                },
+            };
+            if sqlvalue {
+                let sql = format!("insert into {} (t, value) values(?,?)", metric.metric_name);
+                conn.execute(&sql, params![timestamp, result.to_string()])?;
+            }
         }
     }
     Ok(())
@@ -83,13 +86,19 @@ fn main() -> Result<(), M2SError>
     let config = Config::load(&config_file_name)
         .expect(&format!("Failed to load config from file {config_file_name}"));
 
-    // Make map from topic -> (jq query, metric name)
+    // Make map from topic -> Vec<&Metric>
     let metrics = &config.metrics;
-    let mut mq_to_metric_and_jq = BTreeMap::new();
-    for (k,v) in &*metrics {
-        let v2 = (v.json_path.as_str(), k.as_str());
-        mq_to_metric_and_jq.insert(v.mqtt_topic.as_str(), v2);
+    let mut topic_to_metrics: BTreeMap<&str, Vec<&Metric>> = BTreeMap::new();
+    for metric in &*metrics {
+        let topic = metric.mqtt_topic.as_str();
+        if let Some(metrics) = topic_to_metrics.get_mut(topic) {
+            metrics.push(metric);
+        }
+        else {
+            topic_to_metrics.insert(topic, vec![metric]);
+        }
     }
+    let topic_to_metrics = &topic_to_metrics;
 
     // Database
     let conn = Connection::open(&config.db)?;
@@ -118,7 +127,7 @@ fn main() -> Result<(), M2SError>
 
         mqtt_client.connect(conn_opts).await?;
 
-        let topics = config.get_mqtt_topics();
+        let topics: Vec<&str> = config.get_mqtt_topics().into_iter().collect();
         let qos = vec![QOS_2; topics.len()]; //TODO: make configurable
         println!("Subscribing to topics: {:?}", topics);
         let _subs = mqtt_client.subscribe_many(&topics[..], &qos[..]).await?;
@@ -133,7 +142,7 @@ fn main() -> Result<(), M2SError>
  
         while let Some(msg_opt) = strm.next().await {
             if let Some(ref msg) = msg_opt {
-                handle_message(&msg, &mq_to_metric_and_jq, &conn)?;
+                handle_message(&msg, &topic_to_metrics, &conn)?;
             }
             else {
                 // A "None" means we were disconnected. Try to reconnect...
