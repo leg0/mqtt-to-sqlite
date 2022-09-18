@@ -99,18 +99,29 @@ fn main() -> Result<(), M2SError>
     let mut mqtt_client = mqtt::make_client(&config);
 
     if let Err(err) = block_on(async {
+        println!("Connecting...");
         // Get message stream before connecting.
         let mut strm = mqtt_client.get_stream(25);
  
         // Define the set of options for the connection
 
         let conn_opts = mqtt::connection_options(&config)?;
+        mqtt_client.set_disconnected_callback(|_a,_b,c| {
+            println!("cb: client disconnected reason={:?}", c);
+        });
+        mqtt_client.set_connection_lost_callback(|_client| {
+            println!("cb: Connection lost");
+        });
+        mqtt_client.set_connected_callback(|_a| {
+            println!("cb: connected");
+        });
+
         mqtt_client.connect(conn_opts).await?;
- 
+
         let topics = config.get_mqtt_topics();
         let qos = vec![QOS_2; topics.len()]; //TODO: make configurable
         println!("Subscribing to topics: {:?}", topics);
-        mqtt_client.subscribe_many(&topics[..], &qos[..]).await?;
+        let _subs = mqtt_client.subscribe_many(&topics[..], &qos[..]).await?;
  
          // Just loop on incoming messages.
          println!("Waiting for messages...");
@@ -132,6 +143,7 @@ fn main() -> Result<(), M2SError>
                     // For tokio use: tokio::time::delay_for()
                     async_std::task::sleep(Duration::from_millis(1000)).await;
                 }
+                println!("Reconnected");
             }
         }
 

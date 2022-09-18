@@ -1,7 +1,7 @@
 use std::{process, time::Duration};
 use crate::config::Config;
 use crate::error::M2SError;
-use paho_mqtt::{AsyncClient, CreateOptionsBuilder, SslOptions, SslOptionsBuilder, ConnectOptionsBuilder, MQTT_VERSION_3_1_1, Message, QOS_1, ConnectOptions};
+use paho_mqtt::{AsyncClient, CreateOptionsBuilder, SslOptions, SslOptionsBuilder, ConnectOptionsBuilder, MQTT_VERSION_DEFAULT, Message, QOS_1, ConnectOptions};
 
 pub fn make_client(config: &Config) -> AsyncClient {
     if let Some(ref ca_cert) = config.ca_cert { println!("CA cert: {}", ca_cert); }
@@ -10,7 +10,7 @@ pub fn make_client(config: &Config) -> AsyncClient {
 
      let create_opts = CreateOptionsBuilder::new()
          .server_uri(&config.uri)
-         .client_id("mqtt-to-sqlite")
+         .client_id("")
          .finalize();
 
     AsyncClient::new(create_opts).unwrap_or_else(|e| {
@@ -40,8 +40,8 @@ pub fn connection_options(config: &Config) -> Result<ConnectOptions, M2SError> {
     let mut conn_opts_builder = ConnectOptionsBuilder::new();
     conn_opts_builder
         .keep_alive_interval(Duration::from_secs(30))
-        .mqtt_version(MQTT_VERSION_3_1_1)
-        .clean_session(false)
+        .mqtt_version(MQTT_VERSION_DEFAULT)
+        .clean_session(true)
         .will_message(lwt);
     if let Some(ssl_opts) = ssl_options(&config)? {
         conn_opts_builder.ssl_options(ssl_opts);

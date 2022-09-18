@@ -27,7 +27,7 @@ pub struct Config
 }
 
 impl Config {
-    pub(crate) fn load(file: &str) -> Result<Self, M2SError> {
+    pub fn load(file: &str) -> Result<Self, M2SError> {
         let toml_str = fs::read_to_string(file)?;
         Ok(toml::from_str(&toml_str)?)
     }
