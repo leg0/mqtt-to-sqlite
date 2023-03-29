@@ -2,20 +2,19 @@ use futures::{executor::block_on, stream::StreamExt};
 use paho_mqtt::{QOS_2, Message};
 use serde_json::Value;
 use std::collections::BTreeMap;
-use std::env;
 
 use jq_rs as jq;
 use std::time::Duration;
 use rusqlite::{Connection, Result, params};
+use clap::Parser;
 
 mod config;
+mod cli;
 mod db;
 mod mqtt;
 mod error;
 use crate::{config::Config, error::M2SError};
-
-const DEFAULT_CONFIG_FILE_PATH: &str = "/etc/mqtt-to-sqlite/mqtt-to-sqlite.toml";
-const VERSION: &str = env!("CARGO_PKG_VERSION");
+use crate::cli::Cli;
 
 fn handle_message(
     msg: &Message,
@@ -58,30 +57,11 @@ fn handle_message(
 
 fn main() -> Result<(), M2SError>
 {
-    let mut config_file_name = DEFAULT_CONFIG_FILE_PATH.to_owned();
-    let args = &mut env::args();
-    args.next(); // drop the first arg, as that's the executable.
-    match args.next().as_ref().map(|s| &s[..]) {
-        Some("--version") => {
-            println!("mqtt-to-sqlite {VERSION}");
-            return Ok(());
-        }
-        Some("--config") => {
-            match args.next() {
-                Some(cfg_path) => {
-                    config_file_name = cfg_path.to_owned();
-                }
-                _ => {
-                    panic!("Expected file path");
-                }
-            }
-        }
-        _ => {}
-    }
+    let args = Cli::parse();
 
     // Configure
-    let config = Config::load(&config_file_name)
-        .expect(&format!("Failed to load config from file {config_file_name}"));
+    let config = Config::load(&args.config_file_name)
+        .expect(&format!("Failed to load config from file {}", args.config_file_name));
 
     // Make map from topic -> (jq query, metric name)
     let metrics = &config.metrics;

@@ -39,3 +39,4 @@ serde_json = "1.0.83"
 jq-rs = { version = "0.4.1", features = ["bundled"] }
 
 rusqlite = { version = "0.28.0", features = ["bundled"] }
+clap = { version = "4.2.1", features = ["derive"] }
