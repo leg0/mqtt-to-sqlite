@@ -3,11 +3,31 @@ host = "mosquitto.lan"
 port = 8883
 uri = "ssl://mosquitto.lan:8883"
 
-ca_cert =  "/home/lego/.step/certs/root_ca.crt"
-client_cert = "/home/lego/mqtt-to-sqlite/client.crt"
-client_key = "/home/lego/mqtt-to-sqlite/client.key"
-
 db = "m2s.db"
+
+# Optional. If present, uses client certificate for authentication.
+[client_cert_auth]
+    # If you want to authenticate with client certificate then set
+    # the following values. The client_cert must be signed by The
+    # CA that the ca_cert belongs to.
+
+    # Default is "/etc/mqtt-to-sqlite/ca.crt"
+    ca_cert =  "/home/lego/.step/certs/root_ca.crt"
+
+    # Default is "/etc/mqtt-to-sqlite/client.crt"
+    client_cert = "/home/lego/mqtt-to-sqlite/client.crt"
+
+    # Default is "/etc/mqtt-to-sqlite/client.key"
+    client_key = "/home/lego/mqtt-to-sqlite/client.key"
+
+
+# Optional. MQTT Last Will And Testament message settings.
+[lwt]
+    topic = "m2s/lwt"
+    payload = "offline"
+    # Default is 1 (at least once)
+    # Other options are 0 (at most once) and 2 (exactly once)
+    qos = 1
 
 [metrics.metric_name]
 description = "Temperature in garage"

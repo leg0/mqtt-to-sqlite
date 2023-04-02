@@ -85,7 +85,6 @@ fn main() -> Result<(), M2SError>
  
         // Define the set of options for the connection
 
-        let conn_opts = mqtt::connection_options(&config)?;
         mqtt_client.set_disconnected_callback(|_a,_b,c| {
             println!("cb: client disconnected reason={:?}", c);
         });
@@ -95,7 +94,8 @@ fn main() -> Result<(), M2SError>
         mqtt_client.set_connected_callback(|_a| {
             println!("cb: connected");
         });
-
+        
+        let conn_opts = mqtt::connection_options(&config)?;
         mqtt_client.connect(conn_opts).await?;
 
         let topics = config.get_mqtt_topics();
