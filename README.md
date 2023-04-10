@@ -7,6 +7,7 @@ The utility is configured with a toml file that looks like this:
 ```toml
 uri = "ssl://mosquitto.lan:8883"
 
+[client_auth]
 ca_cert =  "root_ca.crt"
 # The client cert issued by the CA that the ca_cert belongs to.
 client_cert = "client.crt"
